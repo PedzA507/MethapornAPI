@@ -259,7 +259,7 @@ app.get('/api/computers', async function(req, res) {
     try {
         const [result] = await db.promise().query(sql);
         result.forEach(computer => {
-            computer.image = computer.image ? `/uploads/${computer.image}` : null;
+            computer.image = computer.image ? `http://192.168.1.49:3000/uploads/${computer.image}` : null;
         });
         res.send(result);
     } catch (err) {
@@ -267,7 +267,6 @@ app.get('/api/computers', async function(req, res) {
         res.status(500).send({ "message": "เกิดข้อผิดพลาดในการดึงข้อมูลคอมพิวเตอร์", "status": false });
     }
 });
-
 // เรียกดูข้อมูลคอมพิวเตอร์ตาม ID (GET)
 app.get('/api/computers/:id', async function(req, res) {
     const { id } = req.params;
@@ -296,11 +295,9 @@ app.put('/api/computers/:id', upload.single('image'), async function(req, res) {
         return res.status(400).send({ "message": "ข้อมูลไม่ครบถ้วน", "status": false });
     }
 
-    const sqlUpdate = "UPDATE Computers SET brandName = ?, modelName = ?, serialNumber = ?, stockQuantity = ?, price = ?, cpuSpeed = ?, memoryCapacity = ?, hardDiskCapacity = ?, image = ? WHERE id = ?";
-
     try {
         if (image) {
-            // Delete old image
+            // หากมีการอัพโหลดรูปภาพใหม่ ลบรูปภาพเก่า
             const [oldData] = await db.promise().query("SELECT image FROM Computers WHERE id = ?", [id]);
             if (oldData.length > 0 && oldData[0].image) {
                 const oldImagePath = path.join(__dirname, 'uploads', oldData[0].image);
@@ -308,22 +305,34 @@ app.put('/api/computers/:id', upload.single('image'), async function(req, res) {
                     if (err) console.error("Failed to delete old image:", err);
                 });
             }
-        }
 
-        await db.promise().query(sqlUpdate, [brandName, modelName, serialNumber, stockQuantity, price, cpuSpeed, memoryCapacity, hardDiskCapacity, image, id]);
-        
-        const imageUrl = image ? `${req.protocol}://${req.get('host')}/uploads/${image}` : null;
-        
-        res.send({ 
-            "message": "ข้อมูลคอมพิวเตอร์อัพเดตเรียบร้อย", 
-            "status": true,
-            "image": imageUrl
-        });
+            // อัพเดตข้อมูลพร้อมภาพใหม่
+            const sqlUpdateWithImage = "UPDATE Computers SET brandName = ?, modelName = ?, serialNumber = ?, stockQuantity = ?, price = ?, cpuSpeed = ?, memoryCapacity = ?, hardDiskCapacity = ?, image = ? WHERE id = ?";
+            await db.promise().query(sqlUpdateWithImage, [brandName, modelName, serialNumber, stockQuantity, price, cpuSpeed, memoryCapacity, hardDiskCapacity, image, id]);
+
+            const imageUrl = `${req.protocol}://${req.get('host')}/uploads/${image}`;
+            res.send({ 
+                "message": "ข้อมูลคอมพิวเตอร์อัพเดตเรียบร้อย", 
+                "status": true,
+                "image": imageUrl
+            });
+        } else {
+            // หากไม่มีการอัพโหลดรูปภาพใหม่ อัพเดตเฉพาะข้อมูล
+            const sqlUpdateWithoutImage = "UPDATE Computers SET brandName = ?, modelName = ?, serialNumber = ?, stockQuantity = ?, price = ?, cpuSpeed = ?, memoryCapacity = ?, hardDiskCapacity = ? WHERE id = ?";
+            await db.promise().query(sqlUpdateWithoutImage, [brandName, modelName, serialNumber, stockQuantity, price, cpuSpeed, memoryCapacity, hardDiskCapacity, id]);
+
+            res.send({ 
+                "message": "ข้อมูลคอมพิวเตอร์อัพเดตเรียบร้อย", 
+                "status": true
+            });
+        }
     } catch (err) {
         console.error('Database update error:', err);
         res.status(500).send({ "message": "เกิดข้อผิดพลาดในการอัพเดตข้อมูลคอมพิวเตอร์", "status": false });
     }
 });
+
+
 
 app.delete('/api/computers/:id', async function(req, res) {
     const { id } = req.params;
